@@ -8,6 +8,10 @@ RUN apt-get update \
        make \
        libsdl2-dev \
        libsdl2-image-dev \
+       libsdl2-ttf-dev \
+       libcurl4-openssl-dev \
+       fonts-dejavu \
+       fonts-noto-cjk \
        xvfb \
        x11vnc \
        openbox \
@@ -20,7 +24,7 @@ RUN apt-get update \
 WORKDIR /app
 
 COPY . /app
-RUN chmod +x /app/docker/entrypoint.sh && make
+RUN chmod +x /app/docker/entrypoint.sh && make app
 
 EXPOSE 6080
 

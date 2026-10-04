@@ -28,7 +28,7 @@ bool renderer_load_background(
     return true;
 }
 
-void renderer_draw_background(
+void renderer_compose_background(
     const SceneRenderer *scene,
     SDL_Renderer *renderer,
     int window_width,
@@ -60,4 +60,14 @@ void renderer_destroy(SceneRenderer *scene) {
         SDL_DestroyTexture(scene->background);
         scene->background = NULL;
     }
+}
+
+void renderer_draw_background(
+    const SceneRenderer *scene,
+    SDL_Renderer *renderer,
+    int window_width,
+    int window_height
+) {
+    renderer_compose_background(scene, renderer, window_width, window_height);
+    SDL_RenderPresent(renderer);
 }

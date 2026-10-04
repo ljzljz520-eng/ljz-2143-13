@@ -6,4 +6,19 @@ services:
     container_name: visual-window-app
     ports:
       - "6080:6080"
+      - "8080:8080"
+    environment:
+      # C client posts versioned commands / idempotent tasks to this backend
+      VW_API: "http://127.0.0.1:8080"
+    restart: "no"
+
+  backend:
+    image: python:3.11-slim
+
+    working_dir: /app
+    volumes:
+      - ./:/app
+    command: ["python3", "server/server.py"]
+    ports:
+      - "8080:8080"
     restart: "no"

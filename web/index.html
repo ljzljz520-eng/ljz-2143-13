@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>背景窗口控件布局编辑器</title>
+<style>
+  :root { --bg:#0f1420; --panel:#1a2233; --line:#2c3850; --fg:#e8edf7;
+          --muted:#93a0b8; --accent:#4f8cff; --ok:#2fbf71; --warn:#e8a33d;
+          --err:#ef5b5b; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:"Noto Sans CJK SC","PingFang SC","Microsoft YaHei",
+         system-ui,sans-serif; background:var(--bg); color:var(--fg); }
+  header { padding:14px 20px; border-bottom:1px solid var(--line);
+           display:flex; align-items:baseline; gap:14px; }
+  header h1 { font-size:16px; margin:0; }
+  header .who { color:var(--muted); font-size:13px; }
+  main { display:grid; grid-template-columns:340px 1fr; gap:16px; padding:16px; }
+  .card { background:var(--panel); border:1px solid var(--line);
+          border-radius:10px; padding:14px; }
+  .card h2 { font-size:13px; color:var(--muted); margin:0 0 10px;
+             text-transform:uppercase; letter-spacing:.05em; }
+  label { display:block; font-size:13px; margin:10px 0 4px; }
+  input[type=text], input[type=number], select {
+    width:100%; padding:8px 10px; background:#0d1322; color:var(--fg);
+    border:1px solid var(--line); border-radius:6px; font-size:14px; }
+  .row { display:flex; gap:10px; }
+  button { padding:9px 14px; border:0; border-radius:6px; cursor:pointer;
+           background:var(--accent); color:#fff; font-size:14px; }
+  button.ghost { background:transparent; border:1px solid var(--line);
+                 color:var(--fg); }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  .hint { font-size:12px; color:var(--muted); margin-top:4px; }
+  #status { margin-top:10px; font-size:13px; min-height:20px; }
+  #status.err { color:var(--err); } #status.ok { color:var(--ok); }
+  #status.warn { color:var(--warn); }
+  /* device mock */
+  #stage { position:relative; width:100%; aspect-ratio:16/9;
+           background:#202a3d url("/assets/background.png");
+           background-size:cover; border-radius:10px; overflow:hidden;
+           border:1px solid var(--line); }
+  .scrim { position:absolute; left:0; right:0; }
+  #titlebar { top:0; display:flex; align-items:center; padding:0 12px; }
+  #actionbar { bottom:0; display:flex; align-items:center; gap:12px;
+               padding:8px 12px; }
+  #titleText { font-weight:600; white-space:nowrap; overflow:hidden;
+               text-overflow:ellipsis; color:#fff; }
+  .ctrl { border:1px solid rgba(255,255,255,.55); border-radius:6px;
+          color:#fff; background:rgba(255,255,255,.06); padding:6px 12px;
+          font-size:14px; position:absolute; }
+  #btnExit { top:8px; right:8px; }
+  #btnStart,#btnSettings { position:static; }
+  .focusring { position:absolute; outline:2px solid var(--accent);
+               outline-offset:2px; pointer-events:none; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th,td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line);}
+  th { color:var(--muted); font-weight:500; }
+  .pill { padding:1px 8px; border-radius:10px; font-size:12px; }
+  .pending { background:#4a3c15; color:var(--warn); }
+  .done { background:#14401f; color:var(--ok); }
+  .failed { background:#43191b; color:var(--err); }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  code { color:#9fd0ff; }
+</style>
+</head>
+<body>
+<header>
+  <h1>背景窗口 · 控件布局编辑器</h1>
+  <span class="who">控制台：
+    <select id="editor" style="width:auto;display:inline-block">
+      <option>consoleA</option><option>consoleB</option></select></span>
+  <span class="who" id="deviceMeta"></span>
+</header>
+
+<main>
+  <section>
+    <div class="card">
+      <h2>编辑</h2>
+      <label>窗口标题（≤127 UTF-8 字节）</label>
+      <input id="fTitle" type="text" value="Visual Window App" maxlength="120" />
+      <div class="hint" id="titleBytes">0 字节</div>
+      <label>字号（px）</label>
+      <input id="fFont" type="number" min="10" max="120" value="24" />
+      <label>开始 / 设置 的布局</label>
+      <select id="fArr">
+        <option value="split">底部独立操作栏（split）</option>
+        <option value="inline">标题栏内联（inline，宽度不足自动降级）</option>
+      </select>
+      <div class="row" style="margin-top:14px">
+        <button id="saveDraft">保存草稿</button>
+        <button id="publish" class="ghost">发布到设备</button>
+        <button id="rebase" class="ghost" style="display:none">载入服务器版本</button>
+      </div>
+      <div id="status"></div>
+      <div class="hint">焦点顺序：<code>开始 → 设置 → 退出</code>，随同一布局更新；
+        触摸命中区互不重叠，退出固定右上角且长标题自动省略。</div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h2>设备实际布局</h2>
+      <div id="actual" class="hint">加载中…</div>
+      <div class="hint">轮询 <code>/layout</code>；客户端按下后若版本已更新会丢弃该次点击。</div>
+    </div>
+  </section>
+
+  <section>
+    <div class="card">
+      <h2>可用区域预览（与 C 端同规则：保留退出区、触摸≥44px、自适应暗化）</h2>
+      <div id="stage">
+        <div class="scrim" id="titlebar"><span id="titleText"></span></div>
+        <div class="ctrl" id="btnExit">退出</div>
+        <div class="scrim" id="actionbar">
+          <button class="ctrl" id="btnStart">开始</button>
+          <button class="ctrl" id="btnSettings">设置</button>
+        </div>
+      </div>
+      <div class="grid2" style="margin-top:14px">
+        <div>
+          <h2>草稿冲突 / 服务器草稿</h2>
+          <div id="conflict" class="hint">无</div>
+        </div>
+        <div>
+          <h2>未完成操作恢复记录</h2>
+          <div id="recovery" class="hint">无</div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+const API = "/api/devices/DEV-1";
+const $ = id => document.getElementById(id);
+let draftRev = 0, baseVersion = 0, pollTimer = null;
+
+function setStatus(msg, kind) {
+  const el = $("status");
+  el.textContent = msg;
+  el.className = kind || "";
+}
+
+async function jget(u) {
+  const r = await fetch(u);
+  return [r.status, await r.json().catch(() => ({}))];
+}
+async function jsend(method, u, body) {
+  const r = await fetch(u, {method, headers:{"content-type":"application/json"},
+                            body: JSON.stringify(body)});
+  return [r.status, await r.json().catch(() => ({}))];
+}
+
+function byteCount(s) { return new TextEncoder().encode(s).length; }
+
+function renderPreview(layout, device) {
+  const W = device.screen_w || 1280;
+  const scale = $("stage").clientWidth / W;
+  const title = layout.title || "";
+  const font = layout.font_size_px || 24;
+  const arr = layout.arrangement || "split";
+  const margin = 8;
+  const exitSize = Math.max(36, Math.min(72, font + 18));
+  const titlebarH = Math.max(exitSize + 2*margin, font*2 + 12);
+
+  $("titlebar").style.height = titlebarH*scale + "px";
+  $("actionbar").style.display = arr === "inline" ? "none" : "flex";
+  $("titleText").textContent = title;
+  $("titleText").style.fontSize = font*scale + "px";
+  $("titleText").style.maxWidth =
+      (W - margin - exitSize - 8 - 16) * scale + "px";
+  ["btnStart","btnSettings","btnExit"].forEach(id => {
+    $(id).style.fontSize = font*scale + "px";
+    $(id).style.minWidth = "88px";
+    $(id).style.minHeight = Math.max(44, Math.min(88, font+20))*scale+"px";
+  });
+  // adaptive darkening preview: brightness slider stands in for measured L
+  const L = Number($("bgLum")?.value || 128);
+  $("titlebar").style.background =
+      `rgba(0,0,0,${(L<64?28:40+L*3/5)/255})`;
+  $("actionbar").style.background =
+      `rgba(0,0,0,${(L<64?20:30+L/2)/255})`;
+  $("titleBytes").textContent = byteCount(title) + " / 127 字节";
+}
+
+async function refreshDevice() {
+  const [, dev] = await jget(API);
+  $("deviceMeta").textContent =
+    `${dev.device_key} · ${dev.screen_w}x${dev.screen_h}@${dev.dpi}dpi · 触摸≥${dev.min_touch}px`;
+  window.__dev = dev;
+  const lay = dev.current_layout || {};
+  baseVersion = lay.version || 0;
+  $("actual").innerHTML =
+    `v<b>${lay.version}</b> · 标题「${lay.title}」 · ${lay.font_size_px}px · ${lay.arrangement}` +
+    ` · spec_hash <code>${lay.spec_hash}</code>`;
+  if (!document.activeElement || document.activeElement.tagName !== "INPUT")
+    renderPreview(lay, dev);
+}
+
+async function saveDraft(publishAfter) {
+  const editor = $("editor").value;
+  const body = {
+    title: $("fTitle").value,
+    font_size_px: Number($("fFont").value),
+    arrangement: $("fArr").value,
+    base_version: baseVersion,
+    rev: draftRev || 1,
+    editor,
+  };
+  let [code, j] = await jsend("PUT", API + "/draft", body);
+  if (code === 422) {
+    setStatus("可用区域校验失败：" + j.error, "err"); return;
+  }
+  if (code === 409) {
+    showConflict(j.server_draft);
+    setStatus("草稿冲突：另一个控制台已更新，先「载入服务器版本」再决定", "err");
+    return;
+  }
+  if (code !== 200) { setStatus("保存失败：" + (j.error||code), "err"); return; }
+  draftRev = j.draft.rev;
+  $("conflict").textContent = "无";
+  $("rebase").style.display = "none";
+  setStatus("草稿已保存（rev=" + draftRev + "）", "ok");
+  if (publishAfter) return doPublish(editor);
+  renderPreview(body, window.__dev);
+}
+
+function showConflict(d) {
+  $("conflict").innerHTML =
+    `服务器草稿由 <b>${d.updated_by}</b> 更新（rev ${d.rev}）：「${d.title}」` +
+    ` ${d.font_size_px}px / ${d.arrangement}`;
+  $("rebase").style.display = "inline-block";
+}
+
+async function doPublish(editor) {
+  const [code, j] = await jsend("POST", API + "/publish",
+      {editor: editor || $("editor").value, base_version: baseVersion});
+  if (code === 409) {
+    setStatus("发布被拒：设备实际布局已变更（v" +
+      (j.actual_layout?.version) + "），已拉取实际布局", "err");
+    refreshDevice();
+    return;
+  }
+  if (code === 422) { setStatus("发布校验失败：" + j.error, "err"); return; }
+  setStatus("已发布 v" + j.version + "，设备将在下个轮询拿到新版本", "ok");
+  baseVersion = j.version;
+  refreshDevice();
+}
+
+async function refreshRecovery() {
+  const [, j] = await jget(API + "/recovery");
+  if (!j.records || !j.records.length) {
+    $("recovery").textContent = "无"; return;
+  }
+  $("recovery").innerHTML = "<table><tr><th>幂等键</th><th>动作</th>" +
+    "<th>任务</th><th>状态</th></tr>" +
+    j.records.map(r => `<tr><td><code>${r.idempotency_key}</code></td>` +
+      `<td>${r.action}</td><td>${r.task_id}</td>` +
+      `<td><span class="pill ${r.status}">${r.status}</span></td></tr>`)
+      .join("") + "</table>";
+}
+
+$("saveDraft").onclick = () => saveDraft(false);
+$("publish").onclick = () => saveDraft(true);
+$("rebase").onclick = async () => {
+  const [, j] = await jget(API + "/draft");
+  if (j.draft) {
+    $("fTitle").value = j.draft.title;
+    $("fFont").value = j.draft.font_size_px;
+    $("fArr").value = j.draft.arrangement;
+    draftRev = j.draft.rev;
+    $("rebase").style.display = "none";
+    setStatus("已载入服务器草稿（rev " + draftRev + "），可在此基础上保存", "ok");
+    renderPreview(j.draft, window.__dev);
+  }
+};
+$("fTitle").addEventListener("input", () => {
+  $("titleBytes").textContent = byteCount($("fTitle").value) + " / 127 字节";
+});
+
+(async function init() {
+  await refreshDevice();
+  const [, dj] = await jget(API + "/draft");
+  if (dj.draft) {
+    $("fTitle").value = dj.draft.title;
+    $("fFont").value = dj.draft.font_size_px;
+    $("fArr").value = dj.draft.arrangement;
+    draftRev = dj.draft.rev;
+  }
+  await refreshRecovery();
+  pollTimer = setInterval(() => { refreshDevice(); refreshRecovery(); }, 4000);
+})();
+</script>
+</body>
+</html>
