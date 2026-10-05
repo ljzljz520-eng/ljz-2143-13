@@ -6,4 +6,5 @@ services:
     container_name: visual-window-app
     ports:
       - "6080:6080"
+      - "8080:8080"
     restart: "no"

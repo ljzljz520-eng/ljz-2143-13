@@ -8,7 +8,7 @@ NOVNC_PORT="6080"
 
 cleanup() {
   local code=$?
-  for pid in "${APP_PID:-}" "${NOVNC_PID:-}" "${VNC_PID:-}" "${WM_PID:-}" "${XVFB_PID:-}"; do
+  for pid in "${APP_PID:-}" "${SERVER_PID:-}" "${NOVNC_PID:-}" "${VNC_PID:-}" "${WM_PID:-}" "${XVFB_PID:-}"; do
     if [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null; then
       kill "${pid}" 2>/dev/null || true
       wait "${pid}" 2>/dev/null || true
@@ -64,7 +64,17 @@ else
 fi
 NOVNC_PID=$!
 
-./visual-window-app &
+python3 server/app.py >/tmp/control-server.log 2>&1 &
+SERVER_PID=$!
+
+for _ in $(seq 1 30); do
+  if python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/health', timeout=.2)" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 0.1
+done
+
+CONTROL_SERVER="http://127.0.0.1:8080" ./visual-window-app &
 APP_PID=$!
 
 wait "${APP_PID}"

@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>背景窗口控件布局管理</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>背景窗口控件管理</h1>
+      <p>编辑标题、字号、三个按钮与浅/深背景；校验通过后发布版本并写入数据库。</p>
+    </div>
+    <div class="meta">
+      <span id="health" class="pill">连接中…</span>
+      <span id="revision" class="pill">草稿 r-</span>
+      <span id="published" class="pill">发布 v-</span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="card editor" aria-label="布局编辑表单">
+      <h2>1. 编辑草稿</h2>
+      <form id="layout-form">
+        <div class="grid two">
+          <label>窗口标题
+            <input id="title" name="title" maxlength="80" required />
+          </label>
+          <label>标题字号
+            <input id="fontSize" name="fontSize" type="number" min="12" max="96" required />
+          </label>
+        </div>
+        <label>字体（CSS 风格回退链）
+          <input id="fontFamily" name="fontFamily" maxlength="255" />
+        </label>
+        <div class="grid three">
+          <label>背景
+            <select id="bgMode">
+              <option value="light">浅色背景</option>
+              <option value="dark">深色背景</option>
+              <option value="adaptive" selected>自适应暗化</option>
+            </select>
+          </label>
+          <label>暗化强度
+            <input id="darken" type="number" step="0.01" min="0" max="0.85" />
+          </label>
+          <label>标题高度
+            <input id="titleH" type="number" min="24" max="120" />
+          </label>
+        </div>
+
+
+      <h3>服务器可用性策略</h3>
+      <div class="grid three">
+        <label><input type="checkbox" id="policy-start" checked /> 允许开始</label>
+        <label><input type="checkbox" id="policy-settings" checked /> 允许设置</label>
+        <label><input type="checkbox" id="policy-exit" checked disabled /> 退出始终允许（安全覆盖）</label>
+      </div>
+      <button type="button" id="savePolicy">更新服务器策略</button>
+
+        <h3>按钮视觉位置（触摸命中区自动扩展到至少 48×48）</h3>
+        <div class="buttons-editor">
+          <fieldset data-action="start">
+            <legend>开始</legend>
+            <div class="grid four">
+              <label>X<input data-field="x" type="number" /></label>
+              <label>Y<input data-field="y" type="number" /></label>
+              <label>宽<input data-field="w" type="number" /></label>
+              <label>高<input data-field="h" type="number" /></label>
+            </div>
+          </fieldset>
+          <fieldset data-action="settings">
+            <legend>设置</legend>
+            <div class="grid four">
+              <label>X<input data-field="x" type="number" /></label>
+              <label>Y<input data-field="y" type="number" /></label>
+              <label>宽<input data-field="w" type="number" /></label>
+              <label>高<input data-field="h" type="number" /></label>
+            </div>
+          </fieldset>
+          <fieldset data-action="exit">
+            <legend>退出（长标题不得覆盖）</legend>
+            <div class="grid four">
+              <label>X<input data-field="x" type="number" /></label>
+              <label>Y<input data-field="y" type="number" /></label>
+              <label>宽<input data-field="w" type="number" /></label>
+              <label>高<input data-field="h" type="number" /></label>
+            </div>
+          </fieldset>
+        </div>
+
+        <input type="hidden" id="baseRevision" />
+        <div class="actions">
+          <button type="button" id="validateBtn">校验</button>
+          <button type="button" id="saveBtn" class="primary">保存草稿</button>
+          <button type="button" id="publishBtn" class="success">校验并发布</button>
+          <button type="button" id="reloadBtn">放弃本地改动</button>
+          <button type="button" id="forceBtn" class="danger hidden">保留本地输入并按最新修订重提</button>
+        </div>
+        <pre id="message" class="message" role="status" aria-live="polite"></pre>
+      </form>
+    </section>
+
+    <section class="card preview-card">
+      <h2>2. 1280×720 实际布局预览</h2>
+      <div id="preview" class="device-preview">
+        <div id="scrim" class="scrim"></div>
+        <div id="previewTitle" class="preview-title"></div>
+        <button id="preview-start" class="preview-button state-idle" type="button">开始</button>
+        <button id="preview-settings" class="preview-button state-idle" type="button">设置</button>
+        <button id="preview-exit" class="preview-button state-idle" type="button">退出</button>
+        <div id="hit-start" class="hit-box"><span>48×48 触摸区</span></div>
+        <div id="hit-settings" class="hit-box"><span>48×48 触摸区</span></div>
+        <div id="hit-exit" class="hit-box"><span>退出命中区</span></div>
+        <div class="safe-box" aria-hidden="true"></div>
+      </div>
+      <p class="hint">Tab 顺序固定为 <b>开始 → 设置 → 退出</b>；蓝色虚线为可用区域，绿色虚线为实际触摸命中区域。</p>
+      <div class="state-demo">
+        <label>开始状态演示
+          <select id="stateSelect">
+            <option value="idle">可用</option>
+            <option value="busy">执行中</option>
+            <option value="success">成功</option>
+            <option value="failure">失败</option>
+          </select>
+        </label>
+      </div>
+    </section>
+
+    <section class="card telemetry">
+      <h2>3. 设备实际布局</h2>
+      <button id="refreshActual" type="button">刷新设备快照</button>
+      <pre id="actualJson" class="json">尚未收到终端上报。</pre>
+    </section>
+
+    <section class="card recovery">
+      <h2>4. 恢复记录与草稿冲突</h2>
+      <button id="refreshRecovery" type="button">刷新恢复记录</button>
+      <div id="recoveryList" class="events">尚无记录。</div>
+      <details>
+        <summary>如何验收“两个控制台同时改标题”</summary>
+        <ol>
+          <li>打开两个浏览器标签页，分别修改不同标题后保存。</li>
+          <li>第二个保存会收到 <code>draft_revision_conflict</code>，显示服务器草稿。</li>
+          <li>可选择放弃本地改动，或点击“覆盖我的改动”后再次保存/发布。</li>
+        </ol>
+      </details>
+    </section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>
